@@ -396,5 +396,5 @@ if __name__ == "__main__":
         usage()
     
     # parse .lnk file
-    out = parse_lnk(sys.argv[2])
+    out = parse_lnk(sys.argv[1])
     print "out: ",out
