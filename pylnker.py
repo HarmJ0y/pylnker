@@ -7,6 +7,9 @@
 #   http://www.i2s-lab.com/Papers/The_Windows_Shortcut_File_Format.pdf
 #   v1.0
 #
+#  Edits by YK
+#   - Added support for blank/invalid timestamps
+#   - Bug fixes for attribute parsing & unicode strings
 
 import sys, struct, datetime, binascii
 
@@ -29,20 +32,22 @@ flag_hash[6][1] = "HAS CUSTOM ICON"
 flag_hash[6][0] = "NO CUSTOM ICON"
 
 # HASH of FileAttributes
-file_hash = [["",""] for _ in xrange(13)]
-file_hash[0][1] = "READ ONLY TARGET"
-file_hash[1][1] = "HIDDEN TARGET"
-file_hash[2][1] = "SYSTEM FILE TARGET"
-file_hash[3][1] = "VOLUME LABEL TARGET (not possible)"
-file_hash[4][1] = "DIRECTORY TARGET"
+file_hash = [["",""] for _ in xrange(15)]
+file_hash[0][1] = "READ ONLY"
+file_hash[1][1] = "HIDDEN"
+file_hash[2][1] = "SYSTEM FILE"
+file_hash[3][1] = "VOLUME LABEL (not possible)"
+file_hash[4][1] = "DIRECTORY"
 file_hash[5][1] = "ARCHIVE"
 file_hash[6][1] = "NTFS EFS"
-file_hash[7][1] = "NORMAL TARGET"
-file_hash[8][1] = "TEMP. TARGET"
-file_hash[9][1] = "SPARSE TARGET"
-file_hash[10][1] = "REPARSE POINT DATA TARGET"
-file_hash[11][1] = "COMPRESSED TARGET"
-file_hash[12][1] = "TARGET OFFLINE"
+file_hash[7][1] = "NORMAL"
+file_hash[8][1] = "TEMP"
+file_hash[9][1] = "SPARSE"
+file_hash[10][1] = "REPARSE POINT DATA"
+file_hash[11][1] = "COMPRESSED"
+file_hash[12][1] = "OFFLINE"
+file_hash[13][1] = "NOT_CONTENT_INDEXED"
+file_hash[14][1] = "ENCRYPTED"
 
 #Hash of ShowWnd values
 show_wnd_hash = [[""] for _ in xrange(11)]
@@ -142,17 +147,22 @@ def read_null_term(f, loc):
 
 
 # adapted from pylink.py
-def ms_time_to_unix(windows_time):
-    unix_time = windows_time / 10000000.0 - 11644473600
-    return datetime.datetime.fromtimestamp(unix_time)
+def ms_time_to_unix_str(windows_time):
+    time_str = ''
+    try:
+        unix_time = windows_time / 10000000.0 - 11644473600
+        time_str = str(datetime.datetime.fromtimestamp(unix_time))
+    except:
+        pass
+    return time_str
 
 
 def add_info(f,loc):
 
-    tmp_len_hex = reverse_hex(read_unpack(f,loc,1))
+    tmp_len_hex = reverse_hex(read_unpack(f,loc,2))
     tmp_len = 2 * int(tmp_len_hex, 16)
 
-    loc += 1
+    loc += 2
 
     if (tmp_len != 0):
         tmp_string = read_unpack_ascii(f, loc, tmp_len)
@@ -165,7 +175,7 @@ def add_info(f,loc):
 
 def parse_lnk(filename):
 
-    # read the file in binary module
+    #read the file in binary module
     f = open(filename, 'rb')
 
     try:
@@ -188,22 +198,27 @@ def parse_lnk(filename):
     output += "Link Flags: " + " | ".join(flag_desc) + "\n"
 
     # File Attributes 4bytes@18h = 24d
-    # Only a non-zero if "Flag bit 1" above is set to 1
-    if flags[1]=="1":
-        file_attrib = read_unpack_bin(f,24,2)
-        output += "File Attributes: "+file_hash[file_attrib.index("1")][1] + "\n"
+    file_attrib = read_unpack_bin(f,24,4)
+    attrib_desc = list()
+    for cnt in xrange(0, 14):
+        bit = int(file_attrib[cnt])
+        # grab the description for this bit
+        if bit == 1:
+            attrib_desc.append(file_hash[cnt][1])
+    if len(attrib_desc) > 0:
+        output += "File Attributes: " + " | ".join(attrib_desc) + "\n"
 
     # Create time 8bytes @ 1ch = 28
     create_time = reverse_hex(read_unpack(f,28,8))
-    output += "Create Time:   "+str(ms_time_to_unix(int(create_time, 16))) + "\n"
+    output += "Create Time:   "+ms_time_to_unix_str(int(create_time, 16)) + "\n"
 
     # Access time 8 bytes@ 0x24 = 36D
     access_time = reverse_hex(read_unpack(f,36,8))
-    output += "Access Time:   "+str(ms_time_to_unix(int(access_time, 16))) + "\n"
+    output += "Access Time:   "+ms_time_to_unix_str(int(access_time, 16)) + "\n"
 
     # Modified Time8b @ 0x2C = 44D
     modified_time = reverse_hex(read_unpack(f,44,8))
-    output += "Modified Time: "+str(ms_time_to_unix(int(modified_time, 16))) + "\n"
+    output += "Modified Time: "+ms_time_to_unix_str(int(modified_time, 16)) + "\n"
 
     # Target File length starts @ 34h = 52d
     length_hex = reverse_hex(read_unpack(f,52,4))
@@ -361,26 +376,22 @@ def parse_lnk(filename):
     if flags[2]=="1":
          addnl_text,next_loc = add_info(f,next_loc)
          output += "Description: "+str(addnl_text) + "\n"
-         next_loc = next_loc + 1
             
     if flags[3]=="1":
          addnl_text,next_loc = add_info(f,next_loc)
-         output += "Relative Path: "+str(addnl_text.decode('utf-16be', errors='ignore')) + "\n"
-         next_loc = next_loc + 1
+         output += "Relative Path: "+str(addnl_text.decode('utf-16le', errors='ignore')) + "\n"
 
     if flags[4]=="1":
          addnl_text,next_loc = add_info(f,next_loc)
          output += "Working Dir: "+str(addnl_text) + "\n"
-         next_loc = next_loc + 1
 
     if flags[5]=="1":
          addnl_text,next_loc = add_info(f,next_loc)
-         output += "Command Line: "+str(addnl_text.decode('utf-16be', errors='ignore')) + "\n"
-         next_loc = next_loc + 1
+         output += "Command Line: "+str(addnl_text.decode('utf-16le', errors='ignore')) + "\n"
             
     if flags[6]=="1":
          addnl_text,next_loc = add_info(f,next_loc)
-         output += "Icon filename: "+str(addnl_text.decode('utf-16be', errors='ignore')) + "\n"
+         output += "Icon filename: "+str(addnl_text.decode('utf-16le', errors='ignore')) + "\n"
     
     return output
 
