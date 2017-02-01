@@ -370,7 +370,7 @@ def parse_lnk(filename):
 
     if flags[4]=="1":
          addnl_text,next_loc = add_info(f,next_loc)
-         output += "Working Dir: "+str(addnl_text) + "\n"
+         output += "Working Dir: "+str(addnl_text.decode('utf-16be', errors='ignore')) + "\n"
          next_loc = next_loc + 1
 
     if flags[5]=="1":
@@ -380,7 +380,7 @@ def parse_lnk(filename):
             
     if flags[6]=="1":
          addnl_text,next_loc = add_info(f,next_loc)
-         output += "Icon filename: "+str(addnl_text.decode('utf-16be', errors='ignore') + "\n"
+         output += "Icon filename: "+str(addnl_text.decode('utf-16be', errors='ignore')) + "\n"
     
     return output
 
