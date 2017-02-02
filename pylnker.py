@@ -30,7 +30,7 @@ flag_hash[6][1] = "HAS CUSTOM ICON"
 flag_hash[6][0] = "NO CUSTOM ICON"
 
 # HASH of FileAttributes
-file_hash = [["",""] for _ in xrange(13)]
+file_hash = [["",""] for _ in xrange(15)]
 file_hash[0][1] = "READ ONLY TARGET"
 file_hash[1][1] = "HIDDEN TARGET"
 file_hash[2][1] = "SYSTEM FILE TARGET"
@@ -44,6 +44,8 @@ file_hash[9][1] = "SPARSE TARGET"
 file_hash[10][1] = "REPARSE POINT DATA TARGET"
 file_hash[11][1] = "COMPRESSED TARGET"
 file_hash[12][1] = "TARGET OFFLINE"
+file_hash[13][1] = "NOT_CONTENT_INDEXED"
+file_hash[14][1] = "ENCRYPTED"
 
 #Hash of ShowWnd values
 show_wnd_hash = [[""] for _ in xrange(11)]
@@ -164,221 +166,228 @@ def add_info(f,loc):
         return (None, now_loc)
 
 
-def parse_lnk(filename):
+def parse_lnk(filename, f):
     # Dictionary for storing all of the LNK's attributes
     lnk_info = {}
     lnk_info['filename'] = filename
+
+    assert_lnk_signature(f)
+
+    # get the flag bits
+    flags = read_unpack_bin(f,20,1)
+    flag_desc = list()
+
+    # flags are only the first 7 bits
+    for cnt in xrange(len(flags)-1):
+        bit = int(flags[cnt])
+        # grab the description for this bit
+        flag_desc.append(flag_hash[cnt][bit])
+
+    lnk_info['link flags'] = flag_desc
+
+    # File Attributes 4bytes@18h = 24d
+    # Only a non-zero if "Flag bit 1" above is set to 1
+    if flags[1]=="1":
+        file_attrib = read_unpack_bin(f,24,2)
+        lnk_info['file_attrib'] = file_hash[file_attrib.index("1")][1]
+
+    # Create time 8bytes @ 1ch = 28
+    create_time = int(reverse_hex(read_unpack(f,28,8)), 16)
+    if create_time != 0:
+        lnk_info['create_time'] = ms_time_to_unix(create_time)
+    else:
+        lnk_info['create_time'] = "Not set"
+        
+    # Access time 8 bytes@ 0x24 = 36D
+    access_time = int(reverse_hex(read_unpack(f,36,8)),16)
+    if access_time != 0:
+        lnk_info['access_time'] = ms_time_to_unix(access_time)
+    else:
+        lnk_info['access_time'] = "Not set"
+
+    # Modified Time8b @ 0x2C = 44D
+    modified_time = int(reverse_hex(read_unpack(f,44,8)), 16)
+    if create_time != 0:
+        lnk_info['modified_time'] = ms_time_to_unix(modified_time)
+    else:
+        lnk_info['modified_time'] = "Not set"
     
-    # read the file in binary module
-    with open(filename, 'rb') as f:
-        assert_lnk_signature(f)
 
-        # get the flag bits
-        flags = read_unpack_bin(f,20,1)
-        flag_desc = list()
+    # Target File length starts @ 34h = 52d
+    length_hex = reverse_hex(read_unpack(f,52,4))
+    length = int(length_hex, 16)
+    lnk_info['target_length'] = length
 
-        # flags are only the first 7 bits
-        for cnt in xrange(len(flags)-1):
-            bit = int(flags[cnt])
-            # grab the description for this bit
-            flag_desc.append(flag_hash[cnt][bit])
+    # Icon File info starts @ 38h = 56d
+    icon_index_hex = reverse_hex(read_unpack(f,56,4))
+    icon_index = int(icon_index_hex, 16)
+    lnk_info['icon_index'] = icon_index
 
-        lnk_info['link flags'] = flag_desc
+    # show windows starts @3Ch = 60d 
+    show_wnd_hex = reverse_hex(read_unpack(f,60,1))
+    show_wnd = int(show_wnd_hex, 16)
+    lnk_info['showwnd'] = show_wnd_hash[show_wnd]
+    
 
-        # File Attributes 4bytes@18h = 24d
-        # Only a non-zero if "Flag bit 1" above is set to 1
-        if flags[1]=="1":
-            file_attrib = read_unpack_bin(f,24,2)
-            lnk_info['file_attrib'] = file_hash[file_attrib.index("1")][1]
+    # hot key starts @40h = 64d 
+    hotkey_hex = reverse_hex(read_unpack(f,64,4))
+    hotkey = int(hotkey_hex, 16)
+    lnk_info['hotkey'] = hotkey
+    
 
-        # Create time 8bytes @ 1ch = 28
-        create_time = reverse_hex(read_unpack(f,28,8))
-        lnk_info['create_time'] = ms_time_to_unix(int(create_time, 16))
+    #------------------------------------------------------------------------
+    # End of Flag parsing
+    #------------------------------------------------------------------------
 
-        # Access time 8 bytes@ 0x24 = 36D
-        access_time = reverse_hex(read_unpack(f,36,8))
-        lnk_info['access_time'] = ms_time_to_unix(int(access_time, 16))
+    # get the number of items
+    items_hex = reverse_hex(read_unpack(f,76,2))
+    items = int(items_hex, 16)
 
-        # Modified Time8b @ 0x2C = 44D
-        modified_time = reverse_hex(read_unpack(f,44,8))
-        lnk_info['modified_time'] = ms_time_to_unix(int(modified_time, 16))
+    list_end = 78 + items
 
-        # Target File length starts @ 34h = 52d
-        length_hex = reverse_hex(read_unpack(f,52,4))
-        length = int(length_hex, 16)
-        lnk_info['target_length'] = length
+    struct_start = list_end
+    first_off_off = struct_start + 4
+    vol_flags_off = struct_start + 8
+    local_vol_off = struct_start + 12
+    base_path_off = struct_start + 16
+    net_vol_off = struct_start + 20
+    rem_path_off = struct_start + 24
 
-        # Icon File info starts @ 38h = 56d
-        icon_index_hex = reverse_hex(read_unpack(f,56,4))
-        icon_index = int(icon_index_hex, 16)
-        lnk_info['icon_index'] = icon_index
+    # Structure length
+    struct_len_hex = reverse_hex(read_unpack(f,struct_start,4))
+    struct_len = int(struct_len_hex, 16)
+    struct_end = struct_start + struct_len
 
-        # show windows starts @3Ch = 60d 
-        show_wnd_hex = reverse_hex(read_unpack(f,60,1))
-        show_wnd = int(show_wnd_hex, 16)
-        lnk_info['showwnd'] = show_wnd_hash[show_wnd]
-        
+    # First offset after struct - Should be 1C under normal circumstances
+    first_off = read_unpack(f,first_off_off,1)
 
-        # hot key starts @40h = 64d 
-        hotkey_hex = reverse_hex(read_unpack(f,64,4))
-        hotkey = int(hotkey_hex, 16)
-        lnk_info['hotkey'] = hotkey
-        
+    # File location flags
+    vol_flags = read_unpack_bin(f,vol_flags_off,1)
 
-        #------------------------------------------------------------------------
-        # End of Flag parsing
-        #------------------------------------------------------------------------
+    lnk_info['target_location'] = "UNKNOWN"
+    # Local volume table
+    # Random garbage if bit0 is clear in volume flags
+    if vol_flags[:2] == "10":
+        lnk_info['target_location'] = 'local volume'
 
-        # get the number of items
-        items_hex = reverse_hex(read_unpack(f,76,2))
-        items = int(items_hex, 16)
+        # This is the offset of the local volume table within the 
+        # File Info Location Structure
+        loc_vol_tab_off_hex = reverse_hex(read_unpack(f,local_vol_off,4))
+        loc_vol_tab_off = int(loc_vol_tab_off_hex, 16)
 
-        list_end = 78 + items
+        # This is the asolute start location of the local volume table
+        loc_vol_tab_start = loc_vol_tab_off + struct_start
 
-        struct_start = list_end
-        first_off_off = struct_start + 4
-        vol_flags_off = struct_start + 8
-        local_vol_off = struct_start + 12
-        base_path_off = struct_start + 16
-        net_vol_off = struct_start + 20
-        rem_path_off = struct_start + 24
+        # This is the length of the local volume table
+        local_vol_len_hex = reverse_hex(read_unpack(f,loc_vol_tab_off+struct_start,4))
+        local_vol_len = int(local_vol_len_hex, 16)
 
-        # Structure length
-        struct_len_hex = reverse_hex(read_unpack(f,struct_start,4))
-        struct_len = int(struct_len_hex, 16)
-        struct_end = struct_start + struct_len
+        # We now have enough info to
+        # Calculate the end of the local volume table.
+        local_vol_tab_end = loc_vol_tab_start + local_vol_len
 
-        # First offset after struct - Should be 1C under normal circumstances
-        first_off = read_unpack(f,first_off_off,1)
+        # This is the volume type
+        curr_tab_offset = loc_vol_tab_off + struct_start + 4
+        vol_type_hex = reverse_hex(read_unpack(f,curr_tab_offset,4))
+        vol_type = int(vol_type_hex, 16)
+        lnk_info['volume_type'] = vol_type_hash[vol_type]
 
-        # File location flags
-        vol_flags = read_unpack_bin(f,vol_flags_off,1)
+        # Volume Serial Number
+        curr_tab_offset = loc_vol_tab_off + struct_start + 8
+        vol_serial = reverse_hex(read_unpack(f,curr_tab_offset,4))
+        lnk_info['volume_serial'] = vol_serial
 
-        lnk_info['target_location'] = "UNKNOWN"
-        # Local volume table
-        # Random garbage if bit0 is clear in volume flags
-        if vol_flags[:2] == "10":
-            lnk_info['target_location'] = 'local volume'
-
-            # This is the offset of the local volume table within the 
-            # File Info Location Structure
-            loc_vol_tab_off_hex = reverse_hex(read_unpack(f,local_vol_off,4))
-            loc_vol_tab_off = int(loc_vol_tab_off_hex, 16)
-
-            # This is the asolute start location of the local volume table
-            loc_vol_tab_start = loc_vol_tab_off + struct_start
-
-            # This is the length of the local volume table
-            local_vol_len_hex = reverse_hex(read_unpack(f,loc_vol_tab_off+struct_start,4))
-            local_vol_len = int(local_vol_len_hex, 16)
-
-            # We now have enough info to
-            # Calculate the end of the local volume table.
-            local_vol_tab_end = loc_vol_tab_start + local_vol_len
-
-            # This is the volume type
-            curr_tab_offset = loc_vol_tab_off + struct_start + 4
-            vol_type_hex = reverse_hex(read_unpack(f,curr_tab_offset,4))
-            vol_type = int(vol_type_hex, 16)
-            lnk_info['volume_type'] = vol_type_hash[vol_type]
-
-            # Volume Serial Number
-            curr_tab_offset = loc_vol_tab_off + struct_start + 8
-            vol_serial = reverse_hex(read_unpack(f,curr_tab_offset,4))
-            lnk_info['volume_serial'] = vol_serial
-
-            # Get the location, and length of the volume label 
-            vol_label_loc = loc_vol_tab_off + struct_start + 16
-            vol_label_len = local_vol_tab_end - vol_label_loc
-            vol_label = read_unpack_ascii(f,vol_label_loc,vol_label_len);
-            lnk_info['volume_label'] = vol_label
-
-            #------------------------------------------------------------------------
-            # This is the offset of the base path info within the
-            # File Info structure
-            #------------------------------------------------------------------------
-
-            base_path_off_hex = reverse_hex(read_unpack(f,base_path_off,4))
-            base_path_off = struct_start + int(base_path_off_hex, 16)
-
-            # Read base path data upto NULL term 
-            base_path = read_null_term(f,base_path_off)
-            lnk_info['base_path'] = base_path
-
-        # Network Volume Table
-        elif vol_flags[:2] == "01":
-
-            # TODO: test this section!
-            lnk_info['target_location'] = 'network share'
-
-            net_vol_off_hex = reverse_hex(read_unpack(f,net_vol_off,4))
-            net_vol_off = struct_start + int(net_vol_off_hex, 16)
-            net_vol_len_hex = reverse_hex(read_unpack(f,net_vol_off,4))
-            net_vol_len = struct_start + int(net_vol_len_hex, 16)
-
-            # Network Share Name
-            net_share_name_off = net_vol_off + 8
-            net_share_name_loc_hex = reverse_hex(read_unpack(f,net_share_name_off,4))
-            net_share_name_loc = int(net_share_name_loc_hex, 16)
-
-            if net_share_name_loc != 20:
-                raise Exception(" [!] Error: NSN ofset should always be 14h\n")
-
-            net_share_name_loc = net_vol_off + net_share_name_loc
-            net_share_name = read_null_term(f,net_share_name_loc)
-            lnk_info['net_share_name'] = net_share_name
-
-            # Mapped Network Drive Info
-            net_share_mdrive = net_vol_off + 12
-            net_share_mdrive_hex = reverse_hex(read_unpack(f,net_share_mdrive,4))
-            net_share_mdrive = int(net_share_mdrive_hex, 16)
-
-            if(net_share_mdrive != 0):
-                net_share_mdrive = net_vol_off + net_share_mdrive
-                mapped_drive = read_null_term(f,net_share_mdrive)
-                lnk_info['mapped_drive'] = mapped_drive
-
-        else:
-            raise Exception(" [!] Error: unknown volume flags")
-
-
-        # Remaining path
-        rem_path_off_hex = reverse_hex(read_unpack(f,rem_path_off,4))
-        rem_path_off = struct_start +int(rem_path_off_hex, 16)
-        rem_data = read_null_term(f,rem_path_off);
-        lnk_info['remaining_path'] = rem_data
+        # Get the location, and length of the volume label 
+        vol_label_loc = loc_vol_tab_off + struct_start + 16
+        vol_label_len = local_vol_tab_end - vol_label_loc
+        vol_label = read_unpack_ascii(f,vol_label_loc,vol_label_len);
+        lnk_info['volume_label'] = vol_label
 
         #------------------------------------------------------------------------
-        # End of FileInfo Structure
+        # This is the offset of the base path info within the
+        # File Info structure
         #------------------------------------------------------------------------
 
-        # The next starting location is the end of the structure
-        next_loc = struct_end
-        addnl_text = ""
+        base_path_off_hex = reverse_hex(read_unpack(f,base_path_off,4))
+        base_path_off = struct_start + int(base_path_off_hex, 16)
 
-        if flags[2]=="1":
-            addnl_text,next_loc = add_info(f,next_loc)
-            lnk_info['description'] = addnl_text
-            next_loc = next_loc + 1
-                
-        if flags[3]=="1":
-            addnl_text,next_loc = add_info(f,next_loc)
-            lnk_info['relative_path'] = addnl_text.decode('utf-16be', errors='ignore')
-            next_loc = next_loc + 1
+        # Read base path data upto NULL term 
+        base_path = read_null_term(f,base_path_off)
+        lnk_info['base_path'] = base_path
 
-        if flags[4]=="1":
-            addnl_text,next_loc = add_info(f,next_loc)
-            lnk_info['working_dir'] = addnl_text.decode('utf-16be', errors='ignore')
-            next_loc = next_loc + 1
+    # Network Volume Table
+    elif vol_flags[:2] == "01":
+        # TODO: test this section!
+        lnk_info['target_location'] = 'network share'
 
-        if flags[5]=="1":
-            addnl_text,next_loc = add_info(f,next_loc)
-            lnk_info['command_line'] = addnl_text.decode('utf-16be', errors='ignore')
-            next_loc = next_loc + 1
-                
-        if flags[6]=="1":
-            addnl_text,next_loc = add_info(f,next_loc)
-            lnk_info['icon_filename'] = addnl_text.decode('utf-16be', errors='ignore')
+        net_vol_off_hex = reverse_hex(read_unpack(f,net_vol_off,4))
+        net_vol_off = struct_start + int(net_vol_off_hex, 16)
+        net_vol_len_hex = reverse_hex(read_unpack(f,net_vol_off,4))
+        #net_vol_len = struct_start + int(net_vol_len_hex, 16)
+
+        # Network Share Name
+        net_share_name_off = net_vol_off + 8
+        net_share_name_loc_hex = reverse_hex(read_unpack(f,net_share_name_off,4))
+        net_share_name_loc = int(net_share_name_loc_hex, 16)
+
+        if net_share_name_loc != 20:
+            raise Exception(" [!] Error: NSN ofset should always be 14h\n")
+
+        net_share_name_loc = net_vol_off + net_share_name_loc
+        net_share_name = read_null_term(f,net_share_name_loc)
+        lnk_info['net_share_name'] = net_share_name
+
+        # Mapped Network Drive Info
+        net_share_mdrive = net_vol_off + 12
+        net_share_mdrive_hex = reverse_hex(read_unpack(f,net_share_mdrive,4))
+        net_share_mdrive = int(net_share_mdrive_hex, 16)
+
+        if(net_share_mdrive != 0):
+            net_share_mdrive = net_vol_off + net_share_mdrive
+            mapped_drive = read_null_term(f,net_share_mdrive)
+            lnk_info['mapped_drive'] = mapped_drive
+
+    else:
+        raise Exception(" [!] Error: unknown volume flags")
+
+
+    # Remaining path
+    rem_path_off_hex = reverse_hex(read_unpack(f,rem_path_off,4))
+    rem_path_off = struct_start +int(rem_path_off_hex, 16)
+    rem_data = read_null_term(f,rem_path_off);
+    lnk_info['remaining_path'] = rem_data
+
+    #------------------------------------------------------------------------
+    # End of FileInfo Structure
+    #------------------------------------------------------------------------
+
+    # The next starting location is the end of the structure
+    next_loc = struct_end
+    addnl_text = ""
+
+    if flags[2]=="1":
+        addnl_text,next_loc = add_info(f,next_loc)
+        lnk_info['description'] = addnl_text
+        next_loc = next_loc + 1
+            
+    if flags[3]=="1":
+        addnl_text,next_loc = add_info(f,next_loc)
+        lnk_info['relative_path'] = addnl_text.decode('utf-16be', errors='ignore')
+        next_loc = next_loc + 1
+
+    if flags[4]=="1":
+        addnl_text,next_loc = add_info(f,next_loc)
+        lnk_info['working_dir'] = addnl_text.decode('utf-16be', errors='ignore')
+        next_loc = next_loc + 1
+
+    if flags[5]=="1":
+        addnl_text,next_loc = add_info(f,next_loc)
+        lnk_info['command_line'] = addnl_text.decode('utf-16be', errors='ignore')
+        next_loc = next_loc + 1
+            
+    if flags[6]=="1":
+        addnl_text,next_loc = add_info(f,next_loc)
+        lnk_info['icon_filename'] = addnl_text.decode('utf-16be', errors='ignore')
     
     return lnk_info
 
@@ -435,6 +444,9 @@ if __name__ == "__main__":
     
     if len(sys.argv) != 2:
         usage()
+        
+    filename = sys.argv[1]
     
-    lnk_info = parse_lnk(sys.argv[1])
-    print format_output(lnk_info)
+    with open(filename, 'rb') as f:
+        lnk_info = parse_lnk(filename, f)
+        print format_output(lnk_info)
