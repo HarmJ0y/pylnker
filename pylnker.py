@@ -380,7 +380,7 @@ def parse_lnk(filename):
             
     if flags[6]=="1":
          addnl_text,next_loc = add_info(f,next_loc)
-         output += "Icon filename: "+str(addnl_text.decode('utf-16be', errors='ignore') + "\n"
+         output += "Icon filename: "+str(addnl_text.decode('utf-16be', errors='ignore')) + "\n"
     
     return output
 
