@@ -13,6 +13,6 @@ Credits:
 
 Usage:
 ```python
-import pylnker
-data = pylnker("path_to_lnk").parse()
+import Pylnker
+data = Pylnker("path_to_lnk").parse()
 ```
