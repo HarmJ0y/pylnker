@@ -22,7 +22,6 @@ from struct import unpack
 
 logging.basicConfig()
 log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
 
 
 class Pylnker(object):
@@ -71,10 +70,10 @@ class Pylnker(object):
     file_hash[10][1] = "FILE_ATTRIBUTE_REPARSE_POINT"
     file_hash[11][1] = "FILE_ATTRIBUTE_COMPRESSED"
     file_hash[12][1] = "FILE_ATTRIBUTE_OFFLINE"
-    file_hash[13][1] = "FILE_ATTRIBUTE_NOT_CONTENT_INDEXED"  # need to test
-    file_hash[14][1] = "FILE_ATTRIBUTE_ENCRYPTED"  # need to test
-    file_hash[15][1] = "Unknown (seen on Windows 95 fat)"  # need to test
-    file_hash[16][1] = "FILE_ATTRIBUTE_VIRTUAL (reserved for future use)"  # need to test
+    file_hash[13][1] = "FILE_ATTRIBUTE_NOT_CONTENT_INDEXED"
+    file_hash[14][1] = "FILE_ATTRIBUTE_ENCRYPTED"
+    file_hash[15][1] = "Unknown (seen on Windows 95 fat)"
+    file_hash[16][1] = "FILE_ATTRIBUTE_VIRTUAL (reserved for future use)"
 
     # Hash of ShowWnd values
     show_wnd_hash = [_ for _ in xrange(11)]
@@ -104,6 +103,11 @@ class Pylnker(object):
     link_info_flags_hash = [[_, 1] for _ in xrange(2)]
     link_info_flags_hash[0][1] = "VolumeIDAndLocalBasePath"
     link_info_flags_hash[1][1] = "CommonNetworkRelativeLinkAndPathSuffix"
+
+    # Has of Network Relative Link Flags
+    nrl_flags_hash = [[_, 1] for _ in xrange(2)]
+    nrl_flags_hash[0][1] = "ValidDevice"
+    nrl_flags_hash[1][1] = "ValidNetType"
 
     # HASH of HotKeyFlags
     hot_key_value = {
@@ -319,7 +323,6 @@ class Pylnker(object):
 
     # read COUNT bytes at LOC and unpack into binary
     def read_unpack_bin(self, loc, count):
-        # jump to the specified location
         self.lnk_obj.seek(loc)
         raw = self.lnk_obj.read(count)
         result = ""
@@ -335,7 +338,6 @@ class Pylnker(object):
 
     # Read a null terminated string from the specified location.
     def read_null_term(self, loc):
-        # jump to the start position
         self.lnk_obj.seek(loc)
         b = self.lnk_obj.read(1)
 
@@ -348,7 +350,8 @@ class Pylnker(object):
 
     def add_info(self, loc):
         """
-        Parses a WORD (CountCharacters) which then gives us a length
+        Parses a WORD (CountCharacters) which then gives us a length to parse. Double this length to account for
+        Unicode data
         :param loc: Index in the file to seek to
         :return: a tuple with the string, and the current file index
         """
@@ -475,7 +478,7 @@ class Pylnker(object):
         lnk_info["Target_Location"] = "Not Set"
         # VolumeID structure
         # Random garbage if bit0 is clear in volume flags
-        if link_info_flags[:2] == "10":
+        if link_info_flags[0] == "1":
             lnk_info["Target_Location"] = "Local"
 
             # This is the offset of the local volume table within the
@@ -514,7 +517,7 @@ class Pylnker(object):
             vol_label_start = int(vol_label_off_hex, 16) + loc_vol_tab_start
             vol_label_len = local_vol_tab_end - vol_label_start
             vol_label = self.read_unpack_ascii(vol_label_start, vol_label_len)
-            lnk_info["Volume_Label"] = vol_label  # .decode("utf-16be", errors="ignore")
+            lnk_info["Volume_Label"] = vol_label
 
             # ---------------------------------------------------------------------
             # This is the offset of the base path info within the
@@ -529,7 +532,7 @@ class Pylnker(object):
             lnk_info["Base_Path"] = base_path
 
         # Network Volume Table
-        elif link_info_flags[:2] == "01":
+        if link_info_flags[1] == "1":
             # TODO: test this section!
             lnk_info["Target_Location"] = "Network"
 
@@ -537,6 +540,17 @@ class Pylnker(object):
             common_network_relative_link_off = struct_start + int(net_vol_off_hex, 16)
             # net_vol_len_hex = reverse_hex(read_unpack(f, common_network_relative_link_off, 4))
             # net_vol_len = struct_start + int(net_vol_len_hex, 16)
+
+            # CommonNetworkRelativeLinkFlags
+            network_relative_link_flags_loc = common_network_relative_link_off + 4
+            network_relative_link_flags = self.read_unpack_bin(network_relative_link_flags_loc, 4)
+
+            lnk_info["Network_Relative_Link_Flags"] = []
+            for cnt in xrange(len(network_relative_link_flags) - 30):
+                bit = int(network_relative_link_flags[cnt])
+                # grab the description for this bit
+                if self.nrl_flags_hash[cnt][bit]:
+                    lnk_info["Network_Relative_Link_Flags"].append(self.nrl_flags_hash[cnt][bit])
 
             # Network Share Name
             net_share_name_off = common_network_relative_link_off + 8
@@ -601,59 +615,59 @@ class Pylnker(object):
 
         return struct_end
 
-    def parse_console_data_block(self, consoldatablock_off):
+    def parse_console_data_block(self, offset):
         cdb = {}
-        # fill_attributes_loc = consoldatablock_off + 4
-        # popup_fill_attributes_loc = consoldatablock_off + 6
+        # fill_attributes_loc = offset + 4
+        # popup_fill_attributes_loc = offset + 6
 
-        screen_buffer_size_x_loc = consoldatablock_off + 8
+        screen_buffer_size_x_loc = offset + 8
         screen_buffer_size_x_hex = self.reverse_hex(self.read_unpack(screen_buffer_size_x_loc, 2))
         screen_buffer_size_x = int(screen_buffer_size_x_hex, 16)
         cdb["Screen_Buffer_Size_X"] = screen_buffer_size_x
 
-        screen_buffer_size_y_loc = consoldatablock_off + 10
+        screen_buffer_size_y_loc = offset + 10
         screen_buffer_size_y_hex = self.reverse_hex(self.read_unpack(screen_buffer_size_y_loc, 2))
         screen_buffer_size_y = int(screen_buffer_size_y_hex, 16)
         cdb["Screen_Buffer_Size_Y"] = screen_buffer_size_y
 
-        window_size_x_loc = consoldatablock_off + 12
+        window_size_x_loc = offset + 12
         window_size_x_hex = self.reverse_hex(self.read_unpack(window_size_x_loc, 2))
         window_size_x = int(window_size_x_hex, 16)
         cdb["Window_Size_X"] = window_size_x
 
-        window_size_y_loc = consoldatablock_off + 14
+        window_size_y_loc = offset + 14
         window_size_y_hex = self.reverse_hex(self.read_unpack(window_size_y_loc, 2))
         window_size_y = int(window_size_y_hex, 16)
         cdb["Window_Size_Y"] = window_size_y
 
-        window_origin_x_loc = consoldatablock_off + 16
+        window_origin_x_loc = offset + 16
         window_origin_x_hex = self.reverse_hex(self.read_unpack(window_origin_x_loc, 2))
         window_origin_x = int(window_origin_x_hex, 16)
         cdb["Window_Origin_X"] = window_origin_x
 
-        window_origin_y_loc = consoldatablock_off + 18
+        window_origin_y_loc = offset + 18
         window_origin_y_hex = self.reverse_hex(self.read_unpack(window_origin_y_loc, 2))
         window_origin_y = int(window_origin_y_hex, 16)
         cdb["Window_Origin_Y"] = window_origin_y
 
-        font_size_loc = consoldatablock_off + 28
+        font_size_loc = offset + 28
         font_size_hex = self.read_unpack(font_size_loc, 4)
         font_size_hex = [self.reverse_hex(font_size_hex[0:4]), self.reverse_hex(font_size_hex[4:8])]
         font_size_hex = ''.join(font_size_hex)
         font_size = int(font_size_hex, 16)
         cdb["Font_Size"] = font_size
 
-        # font_family_loc = consoldatablock_off + 32
+        # font_family_loc = offset + 32
 
-        font_weight_loc = consoldatablock_off + 36
+        font_weight_loc = offset + 36
         font_weight_hex = self.reverse_hex(self.read_unpack(font_weight_loc, 4))
         font_weight = int(font_weight_hex, 16)
         is_bold = font_weight >= 700
         cdb["Is_Bold"] = is_bold
 
-        # face_name_loc = consoldatablock_off + 40
+        # face_name_loc = offset + 40
 
-        cursor_size_loc = consoldatablock_off + 104
+        cursor_size_loc = offset + 104
         cursor_size_hex = self.reverse_hex(self.read_unpack(cursor_size_loc, 4))
         cursor_size = int(cursor_size_hex, 16)
         if cursor_size <= 25:
@@ -665,41 +679,41 @@ class Pylnker(object):
         elif 50 < cursor_size <= 100:
             cdb["Cursor_Size"] = "Large"
 
-        full_screen_loc = consoldatablock_off + 108
+        full_screen_loc = offset + 108
         full_screen_hex = self.reverse_hex(self.read_unpack(full_screen_loc, 4))
         full_screen = int(full_screen_hex, 16)
         is_full_screen = full_screen > 0
         cdb["Is_Full_Screen"] = is_full_screen
 
-        quick_edit_loc = consoldatablock_off + 112
+        quick_edit_loc = offset + 112
         quick_edit_hex = self.reverse_hex(self.read_unpack(quick_edit_loc, 4))
         quick_edit = int(quick_edit_hex, 16)
         is_quick_edit = quick_edit > 0
         cdb["Is_Quick_Edit"] = is_quick_edit
 
-        insert_mode_loc = consoldatablock_off + 116
+        insert_mode_loc = offset + 116
         insert_mode_hex = self.reverse_hex(self.read_unpack(insert_mode_loc, 4))
         insert_mode = int(insert_mode_hex, 16)
         is_insert_mode = insert_mode > 0
         cdb["Is_Insert_Mode"] = is_insert_mode
 
-        auto_position_loc = consoldatablock_off + 120
+        auto_position_loc = offset + 120
         auto_position_hex = self.reverse_hex(self.read_unpack(auto_position_loc, 4))
         auto_position = int(auto_position_hex, 16)
         is_auto_position = auto_position > 0
         cdb["Is_Auto_Position"] = is_auto_position
 
-        history_buffer_size_loc = consoldatablock_off + 124
+        history_buffer_size_loc = offset + 124
         history_buffer_size_hex = self.reverse_hex(self.read_unpack(history_buffer_size_loc, 4))
         history_buffer_size = int(history_buffer_size_hex, 16)
         cdb["History_Buffer_Size"] = history_buffer_size
 
-        history_buffer_count_loc = consoldatablock_off + 128
+        history_buffer_count_loc = offset + 128
         history_buffer_count_hex = self.reverse_hex(self.read_unpack(history_buffer_count_loc, 4))
         history_buffer_count = int(history_buffer_count_hex, 16)
         cdb["History_Buffer_Count"] = history_buffer_count
 
-        history_nodup_loc = consoldatablock_off + 132
+        history_nodup_loc = offset + 132
         history_nodup_hex = self.reverse_hex(self.read_unpack(history_nodup_loc, 4))
         history_nodup = int(history_nodup_hex, 16)
         is_history_nodup = history_nodup > 0
@@ -707,107 +721,106 @@ class Pylnker(object):
 
         self.data["Extra_Data"]["Console_Data_Block"] = cdb
 
-    def parse_console_fe_data_block(self, consolefedatablock_off):
+    def parse_console_fe_data_block(self, offset):
         self.data["Extra_Data"]["Console_FE_Data_Block"] = {}
 
-    def parse_darwin_data_block(self, darwindatablock_off):
+    def parse_darwin_data_block(self, offset):
         self.data["Extra_Data"]["Darwin_Data_Block"] = {}
 
-    def parse_environment_variable_data_block(self, environmentvariabledatablock_off):
+    def parse_environment_variable_data_block(self, offset):
         evdb = {}
-        target_ansi_loc = environmentvariabledatablock_off + 4
-        # target_unicode_loc = environmentvariabledatablock_off + 264  # not complete
+        target_ansi_loc = offset + 4
+        # target_unicode_loc = offset + 264  # not complete
         target_ansi = self.read_null_term(target_ansi_loc)
         evdb["Target"] = target_ansi
         self.data["Extra_Data"]["Environment_Variable_Data_Block"] = evdb
 
-    def parse_icon_environment_data_block(self, iconenvironmentdatablock_off):
+    def parse_icon_environment_data_block(self, offset):
         iedb = {}
-        target_ansi_loc = iconenvironmentdatablock_off + 4
-        # target_unicode_loc = iconenvironmentdatablock_off + 264  # not complete
+        target_ansi_loc = offset + 4
+        # target_unicode_loc = offset + 264  # not complete
         target_ansi = self.read_null_term(target_ansi_loc)
         iedb["Target"] = target_ansi
         self.data["Extra_Data"]["Icon_Environment_Data_Block"] = iedb
 
-    def parse_known_folder_data_block(self, knownfolderdatablock_off):
+    def parse_known_folder_data_block(self, offset):
         kfdb = {}
-        knownfolderdatablock_loc = knownfolderdatablock_off + 4
-        known_folder_id = self.read_unpack(knownfolderdatablock_loc, 16)
-        fieldslices = [self.reverse_hex(known_folder_id[0:8]), self.reverse_hex(known_folder_id[8:12]),
-                       self.reverse_hex(known_folder_id[12:16]), known_folder_id[16:20], known_folder_id[20:32]]
-        known_folder_guid = '-'.join(fieldslices)
+        known_folder_data_block_loc = offset + 4
+        known_folder_id = self.read_unpack(known_folder_data_block_loc, 16)
+        fields = [self.reverse_hex(known_folder_id[0:8]), self.reverse_hex(known_folder_id[8:12]),
+                  self.reverse_hex(known_folder_id[12:16]), known_folder_id[16:20], known_folder_id[20:32]]
+        known_folder_guid = '-'.join(fields)
         known_folder_name = self.known_folder_name_hash(known_folder_guid)
         kfdb["Known_Folder_Name"] = known_folder_name
         kfdb["Known_Folder_GUID"] = known_folder_guid
         self.data["Extra_Data"]["Known_Folder_Data_Block"] = kfdb
 
-    def parse_property_store_data_block(self, propertystoredatablock_off):
+    def parse_property_store_data_block(self, offset):
         self.data["Extra_Data"]["Property_Store_Data_Block"] = {}
 
-    def parse_shim_data_block(self, shimdatablock_off):
+    def parse_shim_data_block(self, offset):
         self.data["Extra_Data"]["Shim_Data_Block"] = {}
 
-    def parse_special_folder_data_block(self, specialfolderdatablock_off):
+    def parse_special_folder_data_block(self, offset):
         sfdb = {}
-        speciafoldeid_loc = specialfolderdatablock_off + 4
-        special_folder_id_hex = self.reverse_hex(self.read_unpack(speciafoldeid_loc, 4))
+        special_folder_id_loc = offset + 4
+        special_folder_id_hex = self.reverse_hex(self.read_unpack(special_folder_id_loc, 4))
         special_folder_id = int(special_folder_id_hex, 16)
         sfdb["Special_Folder_Id"] = special_folder_id
         self.data["Extra_Data"]["Special_Folder_Data_Block"] = sfdb
 
-    def parse_tracker_data_block(self, trackerdatablock_off):
+    def parse_tracker_data_block(self, offset):
         tdb = {}
         # MachineID
-        machineid_loc = trackerdatablock_off + 12
-        machine_id = self.read_null_term(machineid_loc)
+        machine_id_loc = offset + 12
+        machine_id = self.read_null_term(machine_id_loc)
         tdb["Machine_Id"] = machine_id
 
         # NewObjectID MAC Address
-        macaddress_loc = trackerdatablock_off + 54
-        macaddress = self.read_unpack(macaddress_loc, 6)
-        macaddress = self.split_count(macaddress, 2)
-        tdb["Mac_Address"] = macaddress
+        mac_address_loc = offset + 54
+        mac_address = self.split_count(self.read_unpack(mac_address_loc, 6), 2)
+        tdb["Mac_Address"] = mac_address
 
         # Volume Droid
-        volumedroid_loc = trackerdatablock_off + 28
-        volumedroid = self.read_unpack(volumedroid_loc, 16)
-        fieldslices = [self.reverse_hex(volumedroid[0:8]), self.reverse_hex(volumedroid[8:12]),
-                       self.reverse_hex(volumedroid[12:16]), volumedroid[16:20], volumedroid[20:32]]
-        volumedroid = '-'.join(fieldslices)
-        tdb["Volume_Droid"] = volumedroid
+        volume_droid_loc = offset + 28
+        volume_droid = self.read_unpack(volume_droid_loc, 16)
+        fields = [self.reverse_hex(volume_droid[0:8]), self.reverse_hex(volume_droid[8:12]),
+                  self.reverse_hex(volume_droid[12:16]), volume_droid[16:20], volume_droid[20:32]]
+        volume_droid = '-'.join(fields)
+        tdb["Volume_Droid"] = volume_droid
 
         # Volume Droid Birth
-        # volumedroid_birth_loc = trackerdatablock_off + 60
-        volumedroid_birth = self.read_unpack(volumedroid_loc, 16)
-        fieldslices = [self.reverse_hex(volumedroid_birth[0:8]), self.reverse_hex(volumedroid_birth[8:12]),
-                       self.reverse_hex(volumedroid_birth[12:16]), volumedroid_birth[16:20], volumedroid_birth[20:32]]
-        volumedroid_birth = '-'.join(fieldslices)
-        tdb["Volume_Droid_Birth"] = volumedroid_birth
+        # volume_droid_birth_loc = offset + 60
+        volume_droid_birth = self.read_unpack(volume_droid_loc, 16)
+        fields = [self.reverse_hex(volume_droid_birth[0:8]), self.reverse_hex(volume_droid_birth[8:12]),
+                  self.reverse_hex(volume_droid_birth[12:16]), volume_droid_birth[16:20], volume_droid_birth[20:32]]
+        volume_droid_birth = '-'.join(fields)
+        tdb["Volume_Droid_Birth"] = volume_droid_birth
 
         # File Droid
-        filedroid_loc = trackerdatablock_off + 44
-        filedroid = self.read_unpack(filedroid_loc, 16)
-        fieldslices = [self.reverse_hex(filedroid[0:8]), self.reverse_hex(filedroid[8:12]),
-                       self.reverse_hex(filedroid[12:16]), filedroid[16:20], filedroid[20:32]]
-        filedroid = '-'.join(fieldslices)
-        tdb["File_Droid"] = filedroid
+        file_droid_loc = offset + 44
+        file_droid = self.read_unpack(file_droid_loc, 16)
+        fields = [self.reverse_hex(file_droid[0:8]), self.reverse_hex(file_droid[8:12]),
+                  self.reverse_hex(file_droid[12:16]), file_droid[16:20], file_droid[20:32]]
+        file_droid = '-'.join(fields)
+        tdb["File_Droid"] = file_droid
 
         # Creation time
-        filedroid_time = ''.join(fieldslices)
-        timestamp = int((filedroid_time[13:16] + filedroid_time[8:12] + filedroid_time[0:8]), 16)
+        file_droid_time = ''.join(fields)
+        timestamp = int((file_droid_time[13:16] + file_droid_time[8:12] + file_droid_time[0:8]), 16)
         creation = datetime.datetime.utcfromtimestamp((timestamp - 0x01b21dd213814000L) * 100 / 1e9)
         tdb["Creation"] = creation.strftime("%Y-%m-%d %H:%M:%S.%f")
 
         # File Droid Birth
-        filedroid_birth_loc = trackerdatablock_off + 76
-        filedroid_birth = self.read_unpack(filedroid_birth_loc, 16)
-        fieldslices = [self.reverse_hex(filedroid_birth[0:8]), self.reverse_hex(filedroid_birth[8:12]),
-                       self.reverse_hex(filedroid_birth[12:16]), filedroid_birth[16:20], filedroid_birth[20:32]]
-        filedroid_birth = '-'.join(fieldslices)
-        tdb["File_Droid_Birth"] = filedroid_birth
+        file_droid_birth_loc = offset + 76
+        file_droid_birth = self.read_unpack(file_droid_birth_loc, 16)
+        fields = [self.reverse_hex(file_droid_birth[0:8]), self.reverse_hex(file_droid_birth[8:12]),
+                  self.reverse_hex(file_droid_birth[12:16]), file_droid_birth[16:20], file_droid_birth[20:32]]
+        file_droid_birth = '-'.join(fields)
+        tdb["File_Droid_Birth"] = file_droid_birth
         self.data["Extra_Data"]["Tracker_Data_Block"] = tdb
 
-    def parse_vista_and_above_id_list_data_block(self, vistaandaboveidlistdatablock_off):
+    def parse_vista_and_above_id_list_data_block(self, offset):
         self.data["Extra_Data"]["Vista_And_Above_Id_List_data_Block"] = {}
 
     def parse_extra_data(self):
@@ -817,58 +830,58 @@ class Pylnker(object):
         # Find ExtraDataBlock's using their signatures documented by
         # https://winprotocoldoc.blob.core.windows.net/productionwindowsarchives/MS-SHLLINK/[MS-SHLLINK]-131114.pdf
         # Sections 2.5.x (BlockSignature)
-        consoledatablock_off = haystack.find("\x02\x00\x00\xA0")
-        consolefedatablock_off = haystack.find("\x04\x00\x00\xA0")
-        darwindatablock_off = haystack.find("\x06\x00\x00\xA0")
-        environmentvariabledatablock_off = haystack.find("\x01\x00\x00\xA0")
-        iconenvironmentdatablock_off = haystack.find("\x07\x00\x00\xA0")
-        knownfolderdatablock_off = haystack.find("\x0B\x00\x00\xA0")
-        propertystoredatablock_off = haystack.find("\x09\x00\x00\xA0")
-        shimdatablock_off = haystack.find("\x08\x00\x00\xA0")
-        specialfolderdatablock_off = haystack.find("\x05\x00\x00\xA0")
-        trackerdatablock_off = haystack.find("\x03\x00\x00\xA0")
-        vistaandaboveidlistdatablock_off = haystack.find("\x0C\x00\x00\xA0")
+        console_data_block_offset = haystack.find("\x02\x00\x00\xA0")
+        console_fe_data_block_offset = haystack.find("\x04\x00\x00\xA0")
+        darwin_data_block_offset = haystack.find("\x06\x00\x00\xA0")
+        environment_variable_data_block_offset = haystack.find("\x01\x00\x00\xA0")
+        icon_environment_data_block_offset = haystack.find("\x07\x00\x00\xA0")
+        known_folder_data_block_offset = haystack.find("\x0B\x00\x00\xA0")
+        property_store_data_block_offset = haystack.find("\x09\x00\x00\xA0")
+        shim_data_block_offset = haystack.find("\x08\x00\x00\xA0")
+        special_folder_data_block_offset = haystack.find("\x05\x00\x00\xA0")
+        tracker_data_block_offset = haystack.find("\x03\x00\x00\xA0")
+        vista_and_above_id_list_data_block_offset = haystack.find("\x0C\x00\x00\xA0")
 
-        if consoledatablock_off > 0:
+        if console_data_block_offset > 0:
             log.info("Found ConsoleDataBlock signature, report this hash if possible.")
-            self.parse_console_data_block(consoledatablock_off)
+            self.parse_console_data_block(console_data_block_offset)
 
-        if consolefedatablock_off > 0:
+        if console_fe_data_block_offset > 0:
             log.info("Found ConsoleFEDataBlock, report this hash if possible.")
-            self.parse_console_fe_data_block(consolefedatablock_off)
+            self.parse_console_fe_data_block(console_fe_data_block_offset)
 
-        if darwindatablock_off > 0:
+        if darwin_data_block_offset > 0:
             log.info("Found DarwinDataBlock, report this hash if possible.")
-            self.parse_darwin_data_block(darwindatablock_off)
+            self.parse_darwin_data_block(darwin_data_block_offset)
 
-        if environmentvariabledatablock_off > 0:
+        if environment_variable_data_block_offset > 0:
             log.info("Found EnvironmentVariableDataBlock, report this hash if possible")
-            self.parse_environment_variable_data_block(environmentvariabledatablock_off)
+            self.parse_environment_variable_data_block(environment_variable_data_block_offset)
 
-        if iconenvironmentdatablock_off > 0:
+        if icon_environment_data_block_offset > 0:
             log.info("Found IconEnvironmentDataBlock, report this hash if possible")
-            self.parse_icon_environment_data_block(iconenvironmentdatablock_off)
+            self.parse_icon_environment_data_block(icon_environment_data_block_offset)
 
-        if knownfolderdatablock_off > 0:
-            self.parse_known_folder_data_block(knownfolderdatablock_off)
+        if known_folder_data_block_offset > 0:
+            self.parse_known_folder_data_block(known_folder_data_block_offset)
 
-        if propertystoredatablock_off > 0:
+        if property_store_data_block_offset > 0:
             log.info("Found PropertyStoryDataBlock, report this hash if possible")
-            self.parse_property_store_data_block(propertystoredatablock_off)
+            self.parse_property_store_data_block(property_store_data_block_offset)
 
-        if shimdatablock_off > 0:
+        if shim_data_block_offset > 0:
             log.info("Found ShimDataBlock, report this hash if possible")
-            self.parse_shim_data_block(shimdatablock_off)
+            self.parse_shim_data_block(shim_data_block_offset)
 
-        if specialfolderdatablock_off > 0:
-            self.parse_special_folder_data_block(specialfolderdatablock_off)
+        if special_folder_data_block_offset > 0:
+            self.parse_special_folder_data_block(special_folder_data_block_offset)
 
-        if trackerdatablock_off > 0:
-            self.parse_tracker_data_block(trackerdatablock_off)
+        if tracker_data_block_offset > 0:
+            self.parse_tracker_data_block(tracker_data_block_offset)
 
-        if vistaandaboveidlistdatablock_off > 0:
+        if vista_and_above_id_list_data_block_offset > 0:
             log.info("Found VistaAndAboveIDListDataBlock, report this hash if possible")
-            self.parse_vista_and_above_id_list_data_block(vistaandaboveidlistdatablock_off)
+            self.parse_vista_and_above_id_list_data_block(vista_and_above_id_list_data_block_offset)
 
         haystack.close()
 
