@@ -283,7 +283,7 @@ class Pylnker(object):
         return self.hot_key_value.get(hot_key, "Unknown")
 
     def known_folder_name_hash(self, folder):
-        return self.known_folder_name.get(folder, "Unknown")
+        return self.known_folder_name.get(folder.upper(), "Unknown")
 
     # Helper functions for operating on the lnk_obj in the class
     def lnk_open(self):
