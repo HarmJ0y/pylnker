@@ -255,6 +255,7 @@ class Pylnker(object):
     def __init__(self, lnk_path):
         self.path = lnk_path
         self.lnk_obj = None
+        self.end_offset = 0
         self.data = {
             "Link_Flags": [],
             "File_Attributes": [],
@@ -290,6 +291,16 @@ class Pylnker(object):
 
     def lnk_close(self):
         self.lnk_obj.close()
+
+    def get_block_size_from_signature_offset(self, offset):
+        self.lnk_obj.seek(offset - 4)
+        return unpack("i", self.lnk_obj.read(4))[0]
+
+    def set_end_offset(self, offset):
+        # end_offset = x bytes of data (length 'x' of the next segment) - offset length (DWORD)
+        end_offset = self.get_block_size_from_signature_offset(offset) - 4 + offset
+        if end_offset > self.end_offset:
+            self.end_offset = end_offset
 
     @staticmethod
     def reverse_hex(hex_str):
@@ -720,12 +731,15 @@ class Pylnker(object):
         cdb["Is_History_Nodup"] = is_history_nodup
 
         self.data["Extra_Data"]["Console_Data_Block"] = cdb
+        self.set_end_offset(offset)
 
     def parse_console_fe_data_block(self, offset):
         self.data["Extra_Data"]["Console_FE_Data_Block"] = {}
+        self.set_end_offset(offset)
 
     def parse_darwin_data_block(self, offset):
         self.data["Extra_Data"]["Darwin_Data_Block"] = {}
+        self.set_end_offset(offset)
 
     def parse_environment_variable_data_block(self, offset):
         evdb = {}
@@ -734,6 +748,7 @@ class Pylnker(object):
         target_ansi = self.read_null_term(target_ansi_loc)
         evdb["Target"] = target_ansi
         self.data["Extra_Data"]["Environment_Variable_Data_Block"] = evdb
+        self.set_end_offset(offset)
 
     def parse_icon_environment_data_block(self, offset):
         iedb = {}
@@ -742,6 +757,7 @@ class Pylnker(object):
         target_ansi = self.read_null_term(target_ansi_loc)
         iedb["Target"] = target_ansi
         self.data["Extra_Data"]["Icon_Environment_Data_Block"] = iedb
+        self.set_end_offset(offset)
 
     def parse_known_folder_data_block(self, offset):
         kfdb = {}
@@ -754,12 +770,15 @@ class Pylnker(object):
         kfdb["Known_Folder_Name"] = known_folder_name
         kfdb["Known_Folder_GUID"] = known_folder_guid
         self.data["Extra_Data"]["Known_Folder_Data_Block"] = kfdb
+        self.set_end_offset(offset)
 
     def parse_property_store_data_block(self, offset):
         self.data["Extra_Data"]["Property_Store_Data_Block"] = {}
+        self.set_end_offset(offset)
 
     def parse_shim_data_block(self, offset):
         self.data["Extra_Data"]["Shim_Data_Block"] = {}
+        self.set_end_offset(offset)
 
     def parse_special_folder_data_block(self, offset):
         sfdb = {}
@@ -768,6 +787,7 @@ class Pylnker(object):
         special_folder_id = int(special_folder_id_hex, 16)
         sfdb["Special_Folder_Id"] = special_folder_id
         self.data["Extra_Data"]["Special_Folder_Data_Block"] = sfdb
+        self.set_end_offset(offset)
 
     def parse_tracker_data_block(self, offset):
         tdb = {}
@@ -819,9 +839,11 @@ class Pylnker(object):
         file_droid_birth = '-'.join(fields)
         tdb["File_Droid_Birth"] = file_droid_birth
         self.data["Extra_Data"]["Tracker_Data_Block"] = tdb
+        self.set_end_offset(offset)
 
     def parse_vista_and_above_id_list_data_block(self, offset):
         self.data["Extra_Data"]["Vista_And_Above_Id_List_data_Block"] = {}
+        self.set_end_offset(offset)
 
     def parse_extra_data(self):
         # Map the file
@@ -904,6 +926,25 @@ class Pylnker(object):
             self.parse_string_data(flags, struct_end)
 
         self.parse_extra_data()
+
+        # Verify the end of the lnk, check for extra data
+        self.lnk_obj.seek(self.end_offset)
+        end_block = unpack("4s", self.lnk_obj.read(4))[0]
+        if end_block == "\x00\x00\x00\x00":
+            self.end_offset += 4
+            self.lnk_obj.seek(0, 2)
+            file_end = self.lnk_obj.tell()
+            # Check for data after the terminating block, grab it out if there is any
+            if file_end > self.end_offset:
+                self.lnk_obj.seek(self.end_offset)
+                data_size = file_end - self.end_offset
+                self.data["Data_After_EOF"] = {
+                    "Size": data_size,
+                    "Data": self.lnk_obj.read(data_size)
+                }
+        else:
+            log.error("Parsing did not find the lnk terminating block properly")
+
         self.lnk_close()
 
         return self.data
