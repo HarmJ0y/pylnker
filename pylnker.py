@@ -7,6 +7,7 @@ from struct import unpack
 
 logging.basicConfig()
 log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
 
 
 class Pylnker(object):
@@ -280,7 +281,7 @@ class Pylnker(object):
     @staticmethod
     def ms_time_to_unix(windows_time):
         unix_time = windows_time / 10000000.0 - 11644473600
-        return datetime.datetime.fromtimestamp(unix_time).strftime("%Y-%m-%d %H:%M:%S.%f")
+        return datetime.datetime.utcfromtimestamp(unix_time).strftime("%Y-%m-%d %H:%M:%S.%f")
 
     def assert_lnk_signature(self):
         self.lnk_obj.seek(0)
@@ -752,13 +753,6 @@ class Pylnker(object):
         macaddress = self.split_count(macaddress, 2)
         tdb["Mac_Address"] = macaddress
 
-        # MAC vendor
-        # p = manuf.MacParser()
-        # macvendor = p.get_comment(macaddress)
-        # if macvendor == None:
-        #    macvendor = "(Unknown vendor)"
-        # lnk_info['macvendor'] = macvendor
-
         # Volume Droid
         volumedroid_loc = trackerdatablock_off + 28
         volumedroid = self.read_unpack(volumedroid_loc, 16)
@@ -786,7 +780,7 @@ class Pylnker(object):
         # Creation time
         filedroid_time = ''.join(fieldslices)
         timestamp = int((filedroid_time[13:16] + filedroid_time[8:12] + filedroid_time[0:8]), 16)
-        creation = datetime.datetime.fromtimestamp((timestamp - 0x01b21dd213814000L) * 100 / 1e9)
+        creation = datetime.datetime.utcfromtimestamp((timestamp - 0x01b21dd213814000L) * 100 / 1e9)
         tdb["Creation"] = creation.strftime("%Y-%m-%d %H:%M:%S.%f")
 
         # File Droid Birth
@@ -802,33 +796,23 @@ class Pylnker(object):
         self.data["Extra_Data"]["Vista_And_Above_Id_List_data_Block"] = {}
 
     def parse_extra_data(self):
-        # Look for ExtraDataBlock signatures
-        console_props = "\x02\x00\x00\xA0"
-        console_fe_props = "\x04\x00\x00\xA0"
-        darwin_props = "\x06\x00\x00\xA0"
-        environment_props = "\x01\x00\x00\xA0"
-        icon_environment_props = "\x07\x00\x00\xA0"
-        known_folder_props = "\x0B\x00\x00\xA0"
-        property_store_props = "\x09\x00\x00\xA0"
-        shim_props = "\x08\x00\x00\xA0"
-        special_folder_props = "\x05\x00\x00\xA0"
-        tracker_props = "\x03\x00\x00\xA0"
-        vista_and_above_idlist_props = "\x0C\x00\x00\xA0"
-
+        # Map the file
         haystack = mmap.mmap(self.lnk_obj.fileno(), length=0, access=mmap.ACCESS_READ)
 
-        # Find ExtraDataBlock their
-        consoledatablock_off = haystack.find(console_props)
-        consolefedatablock_off = haystack.find(console_fe_props)
-        darwindatablock_off = haystack.find(darwin_props)
-        environmentvariabledatablock_off = haystack.find(environment_props)
-        iconenvironmentdatablock_off = haystack.find(icon_environment_props)
-        knownfolderdatablock_off = haystack.find(known_folder_props)
-        propertystoredatablock_off = haystack.find(property_store_props)
-        shimdatablock_off = haystack.find(shim_props)
-        specialfolderdatablock_off = haystack.find(special_folder_props)
-        trackerdatablock_off = haystack.find(tracker_props)
-        vistaandaboveidlistdatablock_off = haystack.find(vista_and_above_idlist_props)
+        # Find ExtraDataBlock's using their signatures documented by
+        # https://winprotocoldoc.blob.core.windows.net/productionwindowsarchives/MS-SHLLINK/[MS-SHLLINK]-131114.pdf
+        # Sections 2.5.x (BlockSignature)
+        consoledatablock_off = haystack.find("\x02\x00\x00\xA0")
+        consolefedatablock_off = haystack.find("\x04\x00\x00\xA0")
+        darwindatablock_off = haystack.find("\x06\x00\x00\xA0")
+        environmentvariabledatablock_off = haystack.find("\x01\x00\x00\xA0")
+        iconenvironmentdatablock_off = haystack.find("\x07\x00\x00\xA0")
+        knownfolderdatablock_off = haystack.find("\x0B\x00\x00\xA0")
+        propertystoredatablock_off = haystack.find("\x09\x00\x00\xA0")
+        shimdatablock_off = haystack.find("\x08\x00\x00\xA0")
+        specialfolderdatablock_off = haystack.find("\x05\x00\x00\xA0")
+        trackerdatablock_off = haystack.find("\x03\x00\x00\xA0")
+        vistaandaboveidlistdatablock_off = haystack.find("\x0C\x00\x00\xA0")
 
         if consoledatablock_off > 0:
             log.info("Found ConsoleDataBlock signature, report this hash if possible.")
