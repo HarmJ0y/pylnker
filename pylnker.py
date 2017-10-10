@@ -403,15 +403,17 @@ class Pylnker(object):
         # flags are only the first 7 bits not
         for cnt in xrange(len(flags) - 5):
             bit = int(flags[cnt])
-            # grab the description for this bit
-            if isinstance(self.flag_hash[cnt][bit], str):
+            if bit:
                 self.data["Link_Flags"].append(self.flag_hash[cnt][bit])
 
         # File Attributes 4bytes@18h = 24d
         # Only a non-zero if "Flag bit 1" above is set to 1
         if flags[1] == "1":
             file_attrib = self.read_unpack_bin(24, 2)
-            self.data["File_Attributes"] = self.file_hash[file_attrib.index("1")][1]
+            for cnt in xrange(len(file_attrib) - 5):
+                bit = int(file_attrib[cnt])
+                if bit:
+                    self.data["File_Attributes"].append(self.file_hash[cnt][1])
 
         # Create time 8bytes @ 1ch = 28
         creation_time = int(self.reverse_hex(self.read_unpack(28, 8)), 16)
