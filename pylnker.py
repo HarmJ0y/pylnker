@@ -13,11 +13,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import binascii
-import datetime
 import logging
-import mmap
 
+from binascii import hexlify
+from datetime import datetime
+from mmap import mmap, ACCESS_READ
 from struct import unpack
 
 logging.basicConfig()
@@ -311,7 +311,7 @@ class Pylnker(object):
     @staticmethod
     def ms_time_to_unix(windows_time):
         unix_time = windows_time / 10000000.0 - 11644473600
-        return datetime.datetime.utcfromtimestamp(unix_time).strftime("%Y-%m-%d %H:%M:%S.%f")
+        return datetime.utcfromtimestamp(unix_time).strftime("%Y-%m-%d %H:%M:%S.%f")
 
     def assert_lnk_signature(self):
         self.lnk_obj.seek(0)
@@ -345,7 +345,7 @@ class Pylnker(object):
     # read COUNT bytes at LOC
     def read_unpack(self, loc, count):
         self.lnk_obj.seek(loc)
-        return binascii.hexlify(self.lnk_obj.read(count))
+        return hexlify(self.lnk_obj.read(count))
 
     # Read a null terminated string from the specified location.
     def read_null_term(self, loc):
@@ -828,7 +828,7 @@ class Pylnker(object):
         # Creation time
         file_droid_time = ''.join(fields)
         timestamp = int((file_droid_time[13:16] + file_droid_time[8:12] + file_droid_time[0:8]), 16)
-        creation = datetime.datetime.utcfromtimestamp((timestamp - 0x01b21dd213814000L) * 100 / 1e9)
+        creation = datetime.utcfromtimestamp((timestamp - 0x01b21dd213814000L) * 100 / 1e9)
         tdb["Creation"] = creation.strftime("%Y-%m-%d %H:%M:%S.%f")
 
         # File Droid Birth
@@ -847,7 +847,7 @@ class Pylnker(object):
 
     def parse_extra_data(self):
         # Map the file
-        haystack = mmap.mmap(self.lnk_obj.fileno(), length=0, access=mmap.ACCESS_READ)
+        haystack = mmap(self.lnk_obj.fileno(), length=0, access=ACCESS_READ)
 
         # Find ExtraDataBlock's using their signatures documented by
         # https://winprotocoldoc.blob.core.windows.net/productionwindowsarchives/MS-SHLLINK/[MS-SHLLINK]-131114.pdf
@@ -940,7 +940,9 @@ class Pylnker(object):
                 data_size = file_end - self.end_offset
                 self.data["Data_After_EOF"] = {
                     "Size": data_size,
-                    "Data": self.lnk_obj.read(data_size)
+                    "Data": self.lnk_obj.read(data_size),
+                    "Lnk_End": self.end_offset,
+                    "File_End": file_end,
                 }
         else:
             log.error("Parsing did not find the lnk terminating block properly")
