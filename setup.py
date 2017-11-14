@@ -15,5 +15,5 @@ setup(
         'Programming Language :: Python :: 2.7',
     ],
     keywords='lnk parser',
-    scripts=['pylnker.py'],
+    scripts=['bin/pylnker.py'],
 )
