@@ -3,8 +3,6 @@ pylnker
 This is a fork of pylnker aimed to turn the original code into a class. The output that would normally be printed has
 been added to a dictionary which is returned to you after using the parse() function.
 
-[![Build Status](https://travis-ci.org/z00nx/pylnker.svg?branch=master)](https://travis-ci.org/z00nx/pylnker)
-This is a Python port of lnk-parse-1.0, a tool to parse Windows .lnk files.
 Credits:
 - Original CLI tool: https://github.com/HarmJ0y/pylnker
 - Pylinker was ported from: https://code.google.com/p/revealertoolkit/source/browse/trunk/tools/lnk-parse-1.0.pl  

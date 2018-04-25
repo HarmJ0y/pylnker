@@ -4,8 +4,8 @@ setup(
     version='1.0.0',
     description='Python port of lnk-parse-1.0, a tool to parse Windows .lnk files',
     long_description='Python port of lnk-parse-1.0, a tool to parse Windows .lnk files',
-    url='https://github.com/HarmJ0y/pylnker',
-    author='HarmJ0y',
+    url='https://github.com/KillerInstinct/pylnker',
+    author='HarmJ0y, KillerInstinct and z00nx',
     license='GPL2',
     classifiers=[
         'Development Status :: 4 - Beta',
@@ -15,5 +15,4 @@ setup(
         'Programming Language :: Python :: 2.7',
     ],
     keywords='lnk parser',
-    scripts=['bin/pylnker.py'],
 )
