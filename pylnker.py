@@ -15,7 +15,7 @@ import sys, struct, datetime, binascii
 
 
 # HASH of flag attributes
-flag_hash = [["",""] for _ in xrange(7)]
+flag_hash = [["",""] for _ in range(7)]
 flag_hash[0][1] = "HAS SHELLIDLIST"
 flag_hash[0][0] = "NO SHELLIDLIST"
 flag_hash[1][1] = "POINTS TO FILE/DIR"
@@ -32,7 +32,7 @@ flag_hash[6][1] = "HAS CUSTOM ICON"
 flag_hash[6][0] = "NO CUSTOM ICON"
 
 # HASH of FileAttributes
-file_hash = [["",""] for _ in xrange(15)]
+file_hash = [["",""] for _ in range(15)]
 file_hash[0][1] = "READ ONLY"
 file_hash[1][1] = "HIDDEN"
 file_hash[2][1] = "SYSTEM FILE"
@@ -50,7 +50,7 @@ file_hash[13][1] = "NOT_CONTENT_INDEXED"
 file_hash[14][1] = "ENCRYPTED"
 
 #Hash of ShowWnd values
-show_wnd_hash = [[""] for _ in xrange(11)]
+show_wnd_hash = [[""] for _ in range(11)]
 show_wnd_hash[0] = "SW_HIDE"
 show_wnd_hash[1] = "SW_NORMAL"
 show_wnd_hash[2] = "SW_SHOWMINIMIZED"
@@ -64,7 +64,7 @@ show_wnd_hash[9] = "SW_RESTORE"
 show_wnd_hash[10] = "SW_SHOWDEFAULT"
 
 # Hash for Volume types
-vol_type_hash = [[""] for _ in xrange(7)]
+vol_type_hash = [[""] for _ in range(7)]
 vol_type_hash[0] = "Unknown"
 vol_type_hash[1] = "No root directory"
 vol_type_hash[2] = "Removable (Floppy,Zip,USB,etc.)"
@@ -75,7 +75,7 @@ vol_type_hash[6] = "RAM Drive"
 
 
 def reverse_hex(HEXDATE):
-    hexVals = [HEXDATE[i:i + 2] for i in xrange(0, 16, 2)]
+    hexVals = [HEXDATE[i:i + 2] for i in range(0, 16, 2)]
     reversedHexVals = hexVals[::-1]
     return ''.join(reversedHexVals)
 
@@ -84,9 +84,9 @@ def assert_lnk_signature(f):
     f.seek(0)
     sig = f.read(4)
     guid = f.read(16)
-    if sig != 'L\x00\x00\x00':
+    if sig != b'L\x00\x00\x00':
         raise Exception("This is not a .lnk file.")
-    if guid != '\x01\x14\x02\x00\x00\x00\x00\x00\xc0\x00\x00\x00\x00\x00\x00F':
+    if guid != b'\x01\x14\x02\x00\x00\x00\x00\x00\xc0\x00\x00\x00\x00\x00\x00F':
         raise Exception("Cannot read this kind of .lnk file.")
 
 
@@ -100,7 +100,7 @@ def read_unpack_bin(f, loc, count):
     result = ""
 
     for b in raw:
-        result += ("{0:08b}".format(ord(b)))[::-1]
+        result += ("{0:08b}".format(b))[::-1]
 
     return result
 
@@ -122,10 +122,7 @@ def read_unpack(f, loc, count):
     f.seek(loc)
 
     raw = f.read(count)
-    result = ""
-
-    for b in raw:
-        result += binascii.hexlify(b)
+    result = binascii.hexlify(raw).decode()
 
     return result
 
@@ -139,8 +136,8 @@ def read_null_term(f, loc):
     result = ""
     b = f.read(1)
 
-    while b != "\x00":
-        result += str(b)
+    while b != b"\x00":
+        result += b.decode()
         b = f.read(1)
 
     return result
@@ -190,7 +187,7 @@ def parse_lnk(filename):
     flag_desc = list()
 
     # flags are only the first 7 bits
-    for cnt in xrange(len(flags)-1):
+    for cnt in range(len(flags)-1):
         bit = int(flags[cnt])
         # grab the description for this bit
         flag_desc.append(flag_hash[cnt][bit])
@@ -200,7 +197,7 @@ def parse_lnk(filename):
     # File Attributes 4bytes@18h = 24d
     file_attrib = read_unpack_bin(f,24,4)
     attrib_desc = list()
-    for cnt in xrange(0, 14):
+    for cnt in range(0, 14):
         bit = int(file_attrib[cnt])
         # grab the description for this bit
         if bit == 1:
@@ -306,7 +303,7 @@ def parse_lnk(filename):
         vol_label_loc = loc_vol_tab_off + struct_start + 16
         vol_label_len = local_vol_tab_end - vol_label_loc
         vol_label = read_unpack_ascii(f,vol_label_loc,vol_label_len);
-        output += "Vol Label: "+str(vol_label) + "\n"
+        output += "Vol Label: "+vol_label.decode() + "\n"
 
         #------------------------------------------------------------------------
         # This is the offset of the base path info within the
@@ -383,7 +380,7 @@ def parse_lnk(filename):
 
     if flags[4]=="1":
          addnl_text,next_loc = add_info(f,next_loc)
-         output += "Working Dir: "+str(addnl_text) + "\n"
+         output += "Working Dir: "+wideToStr(addnl_text) + "\n"
 
     if flags[5]=="1":
          addnl_text,next_loc = add_info(f,next_loc)
@@ -395,9 +392,16 @@ def parse_lnk(filename):
     
     return output
 
+def wideToStr(bytes):
+    ret = ""
+    for b in bytes:
+        if b:
+            ret += chr(b)
+    return ret
+
 
 def usage():
-    print "Usage: ./pylnker.py .LNK_FILE"
+    print("Usage: ./pylnker.py .LNK_FILE")
     sys.exit(1)
 
 
@@ -408,4 +412,4 @@ if __name__ == "__main__":
     
     # parse .lnk file
     out = parse_lnk(sys.argv[1])
-    print "out: ",out
+    print("out: ",out)
