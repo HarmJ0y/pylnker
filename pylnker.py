@@ -15,7 +15,7 @@ import sys, struct, datetime, binascii
 
 
 # HASH of flag attributes
-flag_hash = [["",""] for _ in xrange(7)]
+flag_hash = [["",""] for _ in range(7)]
 flag_hash[0][1] = "HAS SHELLIDLIST"
 flag_hash[0][0] = "NO SHELLIDLIST"
 flag_hash[1][1] = "POINTS TO FILE/DIR"
@@ -32,7 +32,7 @@ flag_hash[6][1] = "HAS CUSTOM ICON"
 flag_hash[6][0] = "NO CUSTOM ICON"
 
 # HASH of FileAttributes
-file_hash = [["",""] for _ in xrange(15)]
+file_hash = [["",""] for _ in range(15)]
 file_hash[0][1] = "READ ONLY"
 file_hash[1][1] = "HIDDEN"
 file_hash[2][1] = "SYSTEM FILE"
@@ -50,7 +50,7 @@ file_hash[13][1] = "NOT_CONTENT_INDEXED"
 file_hash[14][1] = "ENCRYPTED"
 
 #Hash of ShowWnd values
-show_wnd_hash = [[""] for _ in xrange(11)]
+show_wnd_hash = [[""] for _ in range(11)]
 show_wnd_hash[0] = "SW_HIDE"
 show_wnd_hash[1] = "SW_NORMAL"
 show_wnd_hash[2] = "SW_SHOWMINIMIZED"
@@ -64,7 +64,7 @@ show_wnd_hash[9] = "SW_RESTORE"
 show_wnd_hash[10] = "SW_SHOWDEFAULT"
 
 # Hash for Volume types
-vol_type_hash = [[""] for _ in xrange(7)]
+vol_type_hash = [[""] for _ in range(7)]
 vol_type_hash[0] = "Unknown"
 vol_type_hash[1] = "No root directory"
 vol_type_hash[2] = "Removable (Floppy,Zip,USB,etc.)"
@@ -75,7 +75,7 @@ vol_type_hash[6] = "RAM Drive"
 
 
 def reverse_hex(HEXDATE):
-    hexVals = [HEXDATE[i:i + 2] for i in xrange(0, 16, 2)]
+    hexVals = [HEXDATE[i:i + 2] for i in range(0, 16, 2)]
     reversedHexVals = hexVals[::-1]
     return ''.join(reversedHexVals)
 
@@ -84,9 +84,9 @@ def assert_lnk_signature(f):
     f.seek(0)
     sig = f.read(4)
     guid = f.read(16)
-    if sig != 'L\x00\x00\x00':
+    if sig != b'L\x00\x00\x00':
         raise Exception("This is not a .lnk file.")
-    if guid != '\x01\x14\x02\x00\x00\x00\x00\x00\xc0\x00\x00\x00\x00\x00\x00F':
+    if guid != b'\x01\x14\x02\x00\x00\x00\x00\x00\xc0\x00\x00\x00\x00\x00\x00F':
         raise Exception("Cannot read this kind of .lnk file.")
 
 
@@ -190,7 +190,7 @@ def parse_lnk(filename):
     flag_desc = list()
 
     # flags are only the first 7 bits
-    for cnt in xrange(len(flags)-1):
+    for cnt in range(len(flags)-1):
         bit = int(flags[cnt])
         # grab the description for this bit
         flag_desc.append(flag_hash[cnt][bit])
@@ -200,7 +200,7 @@ def parse_lnk(filename):
     # File Attributes 4bytes@18h = 24d
     file_attrib = read_unpack_bin(f,24,4)
     attrib_desc = list()
-    for cnt in xrange(0, 14):
+    for cnt in range(0, 14):
         bit = int(file_attrib[cnt])
         # grab the description for this bit
         if bit == 1:
@@ -397,7 +397,7 @@ def parse_lnk(filename):
 
 
 def usage():
-    print "Usage: ./pylnker.py .LNK_FILE"
+    print("Usage: ./pylnker.py .LNK_FILE")
     sys.exit(1)
 
 
@@ -408,4 +408,4 @@ if __name__ == "__main__":
     
     # parse .lnk file
     out = parse_lnk(sys.argv[1])
-    print "out: ",out
+    print("out: ",out)
