@@ -100,7 +100,7 @@ def read_unpack_bin(f, loc, count):
     result = ""
 
     for b in raw:
-        result += ("{0:08b}".format(ord(b)))[::-1]
+        result += ("{0:08b}".format(b))[::-1]
 
     return result
 
@@ -122,10 +122,7 @@ def read_unpack(f, loc, count):
     f.seek(loc)
 
     raw = f.read(count)
-    result = ""
-
-    for b in raw:
-        result += binascii.hexlify(b)
+    result = binascii.hexlify(raw).decode()
 
     return result
 
@@ -139,8 +136,8 @@ def read_null_term(f, loc):
     result = ""
     b = f.read(1)
 
-    while b != "\x00":
-        result += str(b)
+    while b != b"\x00":
+        result += b.decode()
         b = f.read(1)
 
     return result
@@ -383,7 +380,7 @@ def parse_lnk(filename):
 
     if flags[4]=="1":
          addnl_text,next_loc = add_info(f,next_loc)
-         output += "Working Dir: "+str(addnl_text) + "\n"
+         output += "Working Dir: "+wideToStr(addnl_text) + "\n"
 
     if flags[5]=="1":
          addnl_text,next_loc = add_info(f,next_loc)
@@ -394,6 +391,13 @@ def parse_lnk(filename):
          output += "Icon filename: "+str(addnl_text.decode('utf-16le', errors='ignore')) + "\n"
     
     return output
+
+def wideToStr(bytes):
+    ret = ""
+    for b in bytes:
+        if b:
+            ret += chr(b)
+    return ret
 
 
 def usage():
