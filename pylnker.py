@@ -303,7 +303,7 @@ def parse_lnk(filename):
         vol_label_loc = loc_vol_tab_off + struct_start + 16
         vol_label_len = local_vol_tab_end - vol_label_loc
         vol_label = read_unpack_ascii(f,vol_label_loc,vol_label_len);
-        output += "Vol Label: "+str(vol_label) + "\n"
+        output += "Vol Label: "+vol_label.decode() + "\n"
 
         #------------------------------------------------------------------------
         # This is the offset of the base path info within the
